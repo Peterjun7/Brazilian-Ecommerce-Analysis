@@ -24,6 +24,23 @@ GROUP BY YEAR(o.order_purchase_timestamp)
 ORDER BY order_year;
 
 -- 01-1. Urgent Seller관련 코드
+-- RFM_SELLER_LISTS 생성
+CREATE TABLE RFM_SELLER_LISTS AS (
+    SELECT 
+        os.seller_id,
+        DATEDIFF('2018-10-17', MAX(order_delivered_carrier_date)) AS recency,
+        COUNT(DISTINCT csd.order_id) AS frequency,
+        SUM(IFNULL(ooi.price, 0)) + SUM(IFNULL(ooi.freight_value, 0)) AS monetary
+    FROM olist_sellers_dataset os
+    INNER JOIN cleaned_seller_delay csd 
+        ON os.seller_id = csd.seller_id
+    INNER JOIN olist_order_items_dataset ooi 
+        ON ooi.seller_id = os.seller_id
+        AND csd.order_id = ooi.order_id -- 주의!!!
+    WHERE ooi.order_id IS NOT NULL 
+    GROUP BY 1
+);
+
 WITH Ranked_Sellers AS (
     SELECT 
         seller_id,

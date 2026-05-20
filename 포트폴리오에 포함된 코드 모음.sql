@@ -24,6 +24,41 @@ GROUP BY YEAR(o.order_purchase_timestamp)
 ORDER BY order_year;
 
 -- 01-1. Urgent Seller관련 코드
+
+-- cleaned_carrier_delay 생성
+CREATE TABLE cleaned_carrier_delay AS
+SELECT 
+    OO.order_id,
+    OOI.seller_id,
+    DATEDIFF(MAX(order_delivered_customer_date), MAX(order_delivered_carrier_date)) - DATEDIFF(MAX(order_estimated_delivery_date), MAX(shipping_limit_date)) AS carrierdelay
+FROM olist_orders_dataset OO
+INNER JOIN olist_order_items_dataset OOI 
+    ON OO.order_id = OOI.order_id
+WHERE YEAR(OO.order_delivered_carrier_date) > 0 
+  AND YEAR(OOI.shipping_limit_date) > 0
+  AND YEAR(order_delivered_customer_date) > 0
+  AND YEAR(order_estimated_delivery_date) > 0
+GROUP BY 
+    OO.order_id, 
+    OOI.seller_id;
+
+-- cleaned_seller_delay 생성, 주문,배송도착 등 여러개의 시간데이터들을 하나로 통일함
+CREATE TABLE cleaned_seller_delay AS
+SELECT 
+    OO.order_id,
+    OOI.seller_id, -- 나중에 도시 정보랑 연결하려면 seller_id가 꼭 필요
+    MAX(OO.order_delivered_carrier_date) AS order_delivered_carrier_date,
+    MAX(OOI.shipping_limit_date) AS shipping_limit_date, 
+    DATEDIFF(MAX(OO.order_delivered_carrier_date), MAX(OOI.shipping_limit_date)) AS sellerdelay
+FROM olist_orders_dataset OO
+INNER JOIN olist_order_items_dataset OOI 
+    ON OO.order_id = OOI.order_id
+WHERE YEAR(OO.order_delivered_carrier_date) > 0 
+  AND YEAR(OOI.shipping_limit_date) > 0
+GROUP BY 
+    OO.order_id, 
+    OOI.seller_id;
+
 -- RFM_SELLER_LISTS 생성
 CREATE TABLE RFM_SELLER_LISTS AS (
     SELECT 
@@ -143,6 +178,30 @@ ORDER BY avg_delay_days DESC;
 
 
 -- 01-3. 판매자의 배송 지연 시간 비중에 따른 타켓팅 솔루션 부재
+-- 주문,판매자별 상품 테이블
+CREATE TABLE product_delay AS
+SELECT 
+    ooi.order_id, 
+    ooi.seller_id,
+
+    -- 모든 상품의 무게합
+    SUM(op.product_weight_g) AS total_weight_g,
+    
+    -- 모든 상품의 부피합
+    SUM(op.product_width_cm * op.product_height_cm * op.product_length_cm) AS total_volume_cm3,
+    
+    -- 카테고리는 1개만 가져오기
+    MAX(op.product_category_name) AS representative_category,
+    
+    -- 주문안에있는 상품개수
+    COUNT(ooi.product_id) AS total_item_count
+
+FROM olist_order_items_dataset ooi
+INNER JOIN olist_products_dataset op 
+    ON ooi.product_id = op.product_id
+GROUP BY ooi.order_id, ooi.seller_id;
+
+
 WITH ValidDelays AS (
     SELECT 
         pd.order_id,
